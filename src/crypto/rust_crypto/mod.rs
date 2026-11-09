@@ -6,6 +6,7 @@ use ::rsa::{
 use ed25519_dalek::SigningKey as Ed25519SigningKey;
 use p256::{ecdsa::SigningKey as P256SigningKey, pkcs8::DecodePrivateKey};
 use p384::ecdsa::SigningKey as P384SigningKey;
+use p521::ecdsa::SigningKey as P521SigningKey;
 use sha2::{Digest, Sha256, Sha384, Sha512};
 
 use crate::{
@@ -62,6 +63,20 @@ fn ec_components_from_private_key(
                 _ => Err(ErrorKind::InvalidEcdsaKey.into()),
             }
         }
+        Algorithm::ES512 => {
+            let secret_key = p521::SecretKey::from_pkcs8_der(key_content)
+                .map_err(|_| ErrorKind::InvalidEcdsaKey)?;
+            let signing_key = P521SigningKey::from_bytes(&secret_key.to_bytes())
+                .map_err(|_| ErrorKind::InvalidEcdsaKey)?;
+            let public_key = p521::ecdsa::VerifyingKey::from(&signing_key);
+            let encoded = public_key.to_encoded_point(false);
+            match encoded.coordinates() {
+                p521::elliptic_curve::sec1::Coordinates::Uncompressed { x, y } => {
+                    Ok((EllipticCurve::P521, x.to_vec(), y.to_vec()))
+                }
+                _ => Err(ErrorKind::InvalidEcdsaKey.into()),
+            }
+        }
         _ => Err(ErrorKind::InvalidEcdsaKey.into()),
     }
 }
@@ -95,6 +110,7 @@ fn new_signer(algorithm: &Algorithm, key: &EncodingKey) -> Result<Box<dyn JwtSig
         Algorithm::HS512 => Box::new(hmac::Hs512Signer::new(key)?) as Box<dyn JwtSigner>,
         Algorithm::ES256 => Box::new(ecdsa::Es256Signer::new(key)?) as Box<dyn JwtSigner>,
         Algorithm::ES384 => Box::new(ecdsa::Es384Signer::new(key)?) as Box<dyn JwtSigner>,
+        Algorithm::ES512 => Box::new(ecdsa::Es512Signer::new(key)?) as Box<dyn JwtSigner>,
         Algorithm::RS256 => Box::new(rsa::Rsa256Signer::new(key)?) as Box<dyn JwtSigner>,
         Algorithm::RS384 => Box::new(rsa::Rsa384Signer::new(key)?) as Box<dyn JwtSigner>,
         Algorithm::RS512 => Box::new(rsa::Rsa512Signer::new(key)?) as Box<dyn JwtSigner>,
@@ -117,6 +133,7 @@ fn new_verifier(
         Algorithm::HS512 => Box::new(hmac::Hs512Verifier::new(key)?) as Box<dyn JwtVerifier>,
         Algorithm::ES256 => Box::new(ecdsa::Es256Verifier::new(key)?) as Box<dyn JwtVerifier>,
         Algorithm::ES384 => Box::new(ecdsa::Es384Verifier::new(key)?) as Box<dyn JwtVerifier>,
+        Algorithm::ES512 => Box::new(ecdsa::Es512Verifier::new(key)?) as Box<dyn JwtVerifier>,
         Algorithm::RS256 => Box::new(rsa::Rsa256Verifier::new(key)?) as Box<dyn JwtVerifier>,
         Algorithm::RS384 => Box::new(rsa::Rsa384Verifier::new(key)?) as Box<dyn JwtVerifier>,
         Algorithm::RS512 => Box::new(rsa::Rsa512Verifier::new(key)?) as Box<dyn JwtVerifier>,

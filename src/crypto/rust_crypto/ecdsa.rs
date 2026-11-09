@@ -12,6 +12,9 @@ use p256::pkcs8::DecodePrivateKey;
 use p384::ecdsa::{
     Signature as Signature384, SigningKey as SigningKey384, VerifyingKey as VerifyingKey384,
 };
+use p521::ecdsa::{
+    Signature as Signature512, SigningKey as SigningKey512, VerifyingKey as VerifyingKey512,
+};
 use signature::{Error, Signer, Verifier};
 
 macro_rules! define_ecdsa_signer {
@@ -85,3 +88,33 @@ define_ecdsa_signer!(Es384Signer, Algorithm::ES384, SigningKey384);
 
 define_ecdsa_verifier!(Es256Verifier, Algorithm::ES256, VerifyingKey256, Signature256);
 define_ecdsa_verifier!(Es384Verifier, Algorithm::ES384, VerifyingKey384, Signature384);
+define_ecdsa_verifier!(Es512Verifier, Algorithm::ES512, VerifyingKey512, Signature512);
+
+pub struct Es512Signer(SigningKey512);
+
+impl Es512Signer {
+    pub(crate) fn new(encoding_key: &EncodingKey) -> Result<Self> {
+        if encoding_key.family() != AlgorithmFamily::Ec {
+            return Err(new_error(ErrorKind::InvalidKeyFormat));
+        }
+
+        let secret_key = p521::SecretKey::from_pkcs8_der(encoding_key.as_bytes())
+            .map_err(|_| ErrorKind::InvalidEcdsaKey)?;
+        Ok(Self(
+            SigningKey512::from_bytes(&secret_key.to_bytes())
+                .map_err(|_| ErrorKind::InvalidEcdsaKey)?,
+        ))
+    }
+}
+
+impl Signer<Vec<u8>> for Es512Signer {
+    fn try_sign(&self, msg: &[u8]) -> std::result::Result<Vec<u8>, Error> {
+        Ok(self.0.sign(msg).to_bytes().to_vec())
+    }
+}
+
+impl JwtSigner for Es512Signer {
+    fn algorithm(&self) -> Algorithm {
+        Algorithm::ES512
+    }
+}
